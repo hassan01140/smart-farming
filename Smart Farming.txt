@@ -1,0 +1,194 @@
+// The necessary libraries
+#include <Wire.h>
+#include <DHT.h>
+#include <LiquidCrystal_I2C.h>
+#define BLYNK_TEMPLATE_ID "TMPL6-isXwPJh"
+#define BLYNK_TEMPLATE_NAME "Smart Farm"
+#define BLYNK_AUTH_TOKEN "sCy3nZoxF5Y3J4F7wMTFnjUt2RfHPtOstween"
+#define DHTPIN 2     // GPIO pin where your DHT11 is connected (Board pin SDA)
+#define DHTTYPE DHT11
+DHT dht(DHTPIN, DHTTYPE);
+#define RELAY_PIN 13
+bool motorState = false; 
+
+// LCD address is set to 0x27 for a 16 chars and 2 line display
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+unsigned long previousMillis = 0;
+const long interval = 2000;  // Interval in milliseconds
+
+const int waterSensorPin = 39;    // Pin connected to the water level sensor
+const int soilMoisturePin = 4;   // Pin connected to the soil moisture sensor
+const int buzzerPin = 12;       // Pin connected to the buzzers
+const int pHSensorPin = 34;    // Pin connected to the ph sensor
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(waterSensorPin, INPUT);
+  pinMode(soilMoisturePin, INPUT);
+  pinMode(buzzerPin, OUTPUT);
+  pinMode(RELAY_PIN, OUTPUT);
+  digitalWrite(RELAY_PIN, LOW);
+  dht.begin();
+  // Initialize the LCD
+  lcd.init();
+  // Turn on the backlight
+  lcd.backlight();
+}
+
+void loop() {
+  lcd.clear();
+  int waterLevel = analogRead(waterSensorPin);
+  int soilMoisture = analogRead(soilMoisturePin);
+  float humidity = dht.readHumidity();
+  float temperature = dht.readTemperature();
+  int sensorValue = analogRead(pHSensorPin);
+
+  // Convert the analog value to pH using your sensor's calibration data
+  float pHValue = convertToPH(sensorValue);
+
+  // Print the pH value to the serial monitor
+  Serial.print("pH Value: ");
+  Serial.println(pHValue);
+  lcd.setCursor(0, 0);
+  lcd.print("pH Value:");
+  lcd.setCursor(10, 0);
+  lcd.print(pHValue);
+
+  // Check if DHT11 Connected and Working properly
+  //if (isnan(humidity) || isnan(temperature)) {
+   // Serial.println("Failed to read from DHT sensor!");
+ //   return;
+ // }
+
+  // Map the analog value to a specific range representing the water level
+  int mappedLevel = map(waterLevel, 0, 4095, 0, 100);  // The mapping of water level 
+  // Print values of Water Level
+  Serial.print("Water Level: ");
+  Serial.print(mappedLevel);
+  Serial.println("%");
+  lcd.setCursor(0, 1);
+  lcd.print("WL:");
+  lcd.setCursor(4, 1);
+  lcd.print(mappedLevel);
+  lcd.setCursor(7, 1);
+  lcd.print("%");
+
+  // Map the analog value to a specific range representing moisture level
+  int mappedMoisture = map(soilMoisture, 0, 4095, 0, 100);  // The mapping of moisture level 
+  // Print values of Soil Moisture
+  Serial.print("Soil Moisture: ");
+  Serial.print(mappedMoisture);
+  Serial.println("%");
+  lcd.setCursor(8, 1);
+  lcd.print(" SM:");
+  lcd.setCursor(12, 1);
+  lcd.print(mappedMoisture);
+  lcd.setCursor(14, 1);
+  lcd.print("%");
+
+  // Wait for 2 seconds
+  delay(2000);
+  // Clear the LCD
+  lcd.clear();
+
+  // Print values of Humidity and Temperature
+  Serial.print("Humidity: ");
+  Serial.print(humidity);
+  Serial.print("%  Temperature: ");
+  Serial.print(temperature);
+  Serial.println("°C");
+  lcd.setCursor(0, 0);
+  lcd.print("Humidity:");
+  lcd.setCursor(10, 0);
+  lcd.print(humidity);
+  lcd.setCursor(15, 0);
+  lcd.print("%");
+  lcd.setCursor(0, 1);
+  lcd.print("Temp:");
+  lcd.setCursor(6, 1);
+  lcd.print(temperature);
+  lcd.setCursor(11, 1);
+  lcd.print(" C");
+
+  // Wait for 2 seconds
+  delay(2000);
+  // Clear the LCD
+  lcd.clear();
+
+  // Check if the water level is less than 20%
+  if (mappedLevel < 20) {
+    Serial.println("Low water level! Activating buzzer and Motor.");
+    activateBuzzer();
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Low water level!");
+    // Wait for 1 seconds
+    delay(1000);
+    // Clear the LCD
+    lcd.clear();
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Motor ON");
+    // Wait for 1 seconds
+    delay(1000);
+    // Clear the LCD
+    lcd.clear();
+  }
+  if (mappedLevel < 20) {
+    Serial.println("Water level is below threshold. Turning motor ON.");
+    digitalWrite(RELAY_PIN, HIGH);  // Turn relay (and motor) ON
+    motorState = true;
+  } else if (mappedLevel >= 60) {
+    Serial.println("Water level is above threshold. Turning motor OFF.");
+    digitalWrite(RELAY_PIN, LOW);   // Turn relay (and motor) OFF
+    motorState = false;
+  }
+
+  // Check if the soil moisture level is greater than 50%
+  if (mappedMoisture > 50) {
+    Serial.println("Low soil moisture! Activating buzzer.");
+    activateBuzzer();
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Low soil moisture!");
+    // Wait for 1 seconds
+    delay(1000);
+    // Clear the LCD
+    lcd.clear();
+  }
+
+  //delay(5000);
+
+}
+
+float convertToPH(int sensorValue) {
+  // Implement the conversion logic based on your sensor's characteristics
+  // You may need to refer to your sensor's datasheet or documentation
+  // This is just a placeholder, you need to replace it with your sensor's actual conversion code
+  float pHValue = map(sensorValue, 0, 4095, 0, 14); 
+
+  return pHValue;
+}
+void activateBuzzer() {
+
+  // Customized melody by changing the frequencies and durations
+  int melody[] = {262, 294, 330, 349, 392, 440, 494, 523};
+  int duration = 200; // in milliseconds
+  
+  for (int i = 0; i < 8; i++) {
+    tone(buzzerPin, melody[i], duration);
+    delay(duration);
+    noTone(buzzerPin);
+    delay(50); // A short pause between notes
+  }
+  
+  delay(1000); // A longer pause between melodies
+  
+  // duration and frequency of the buzzer
+  //int buzzerDuration = 1000;  // in milliseconds
+
+  //tone(buzzerPin, 1000, buzzerDuration);
+  //delay(buzzerDuration);
+  //noTone(buzzerPin);
+  //delay(1000);  // Adjust the delay 
+}
